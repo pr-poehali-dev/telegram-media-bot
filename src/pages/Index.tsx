@@ -9,6 +9,20 @@ import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
 const ADMIN_PASSWORD = ')F?Je}dj1$2x&,~Res7<QvNMEZ&6JvkjT{a!{jVKu?s8qzm4,gDdhf;o7{euHcB:';
+const API_URL = 'https://functions.poehali.dev/1b214053-fe8b-4a5c-8bbb-bc561bb87ae1';
+
+interface Download {
+  id: number;
+  telegram_link: string;
+  media_type?: string;
+  file_name?: string;
+  file_size?: number;
+  file_url?: string;
+  status: string;
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+}
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -17,6 +31,8 @@ const Index = () => {
   const [telegramLink, setTelegramLink] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [downloads, setDownloads] = useState<Download[]>([]);
+  const [totalDownloads, setTotalDownloads] = useState(0);
 
   useEffect(() => {
     const savedAuth = sessionStorage.getItem('admin_authenticated');
@@ -24,6 +40,27 @@ const Index = () => {
       setIsAuthenticated(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadDownloads();
+      const interval = setInterval(loadDownloads, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
+  const loadDownloads = async () => {
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        setDownloads(data);
+        setTotalDownloads(data.length);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки истории:', error);
+    }
+  };
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
@@ -43,7 +80,7 @@ const Index = () => {
     toast.success('Вы вышли из системы');
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!telegramLink.trim()) {
       toast.error('Введите ссылку на медиа');
       return;
@@ -52,33 +89,72 @@ const Index = () => {
     setIsProcessing(true);
     setProgress(0);
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsProcessing(false);
-          toast.success('Медиа успешно загружено!');
-          setTelegramLink('');
-          return 0;
-        }
-        return prev + 10;
-      });
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => Math.min(prev + 5, 90));
     }, 200);
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ link: telegramLink }),
+      });
+
+      const data = await response.json();
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      if (response.ok) {
+        toast.success('Медиа успешно обработано!');
+        setTelegramLink('');
+        await loadDownloads();
+      } else {
+        toast.error(data.error || 'Ошибка скачивания');
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      toast.error('Ошибка соединения с сервером');
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProgress(0);
+      }, 500);
+    }
   };
 
+  const successfulDownloads = downloads.filter(d => d.status === 'completed').length;
+  const successRate = totalDownloads > 0 ? ((successfulDownloads / totalDownloads) * 100).toFixed(1) : '0';
+
   const stats = [
-    { label: 'Скачиваний сегодня', value: '12,847', icon: 'Download', color: 'text-primary' },
-    { label: 'Активных ботов', value: '2,341', icon: 'Bot', color: 'text-secondary' },
-    { label: 'Пользователей онлайн', value: '8,192', icon: 'Users', color: 'text-accent' },
-    { label: 'Успешность', value: '99.7%', icon: 'TrendingUp', color: 'text-secondary' },
+    { label: 'Всего скачиваний', value: totalDownloads.toString(), icon: 'Download', color: 'text-primary' },
+    { label: 'Успешных', value: successfulDownloads.toString(), icon: 'CheckCircle', color: 'text-secondary' },
+    { label: 'В обработке', value: downloads.filter(d => d.status === 'processing').length.toString(), icon: 'Loader2', color: 'text-accent' },
+    { label: 'Успешность', value: `${successRate}%`, icon: 'TrendingUp', color: 'text-secondary' },
   ];
 
-  const recentDownloads = [
-    { id: 1, type: 'video', name: 'video_2026_01_11.mp4', size: '145 MB', time: '2 мин назад', status: 'completed' },
-    { id: 2, type: 'photo', name: 'photo_high_res.jpg', size: '8.2 MB', time: '5 мин назад', status: 'completed' },
-    { id: 3, type: 'video', name: 'telegram_video.mp4', size: '89 MB', time: '12 мин назад', status: 'completed' },
-    { id: 4, type: 'photo', name: 'image_album_01.jpg', size: '5.1 MB', time: '18 мин назад', status: 'completed' },
-  ];
+  const formatTimeAgo = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'только что';
+    if (diffMins < 60) return `${diffMins} мин назад`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} ч назад`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} д назад`;
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return 'N/A';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const serverStatus = [
     { name: 'EU-West-1', load: 45, status: 'healthy', ping: '12ms' },
@@ -245,30 +321,62 @@ const Index = () => {
                 Последние скачивания
               </h3>
               <div className="space-y-3">
-                {recentDownloads.map((download) => (
-                  <div
-                    key={download.id}
-                    className="flex items-center justify-between p-4 bg-card/50 rounded-lg hover:bg-card transition-colors"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`p-3 rounded-lg ${download.type === 'video' ? 'bg-primary/10' : 'bg-secondary/10'}`}>
-                        <Icon
-                          name={download.type === 'video' ? 'Video' : 'Image'}
-                          size={24}
-                          className={download.type === 'video' ? 'text-primary' : 'text-secondary'}
-                        />
-                      </div>
-                      <div>
-                        <p className="font-medium">{download.name}</p>
-                        <p className="text-sm text-muted-foreground">{download.size} • {download.time}</p>
-                      </div>
-                    </div>
-                    <Badge className="bg-secondary/20 text-secondary border-secondary/30">
-                      <Icon name="Check" size={14} className="mr-1" />
-                      Завершено
-                    </Badge>
+                {downloads.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Icon name="Inbox" size={48} className="mx-auto mb-3 opacity-50" />
+                    <p>История загрузок пуста</p>
                   </div>
-                ))}
+                ) : (
+                  downloads.map((download) => (
+                    <div
+                      key={download.id}
+                      className="flex items-center justify-between p-4 bg-card/50 rounded-lg hover:bg-card transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-lg ${
+                          download.status === 'completed' ? 'bg-secondary/10' :
+                          download.status === 'processing' ? 'bg-accent/10' : 'bg-destructive/10'
+                        }`}>
+                          <Icon
+                            name={
+                              download.status === 'completed' ? 'CheckCircle' :
+                              download.status === 'processing' ? 'Loader2' : 'XCircle'
+                            }
+                            size={24}
+                            className={`${
+                              download.status === 'completed' ? 'text-secondary' :
+                              download.status === 'processing' ? 'text-accent animate-spin' : 'text-destructive'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <p className="font-medium truncate max-w-md">{download.file_name || 'Обработка...'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatFileSize(download.file_size)} • {formatTimeAgo(download.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      {download.status === 'completed' && download.file_url ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={download.file_url} target="_blank" rel="noopener noreferrer">
+                            <Icon name="ExternalLink" size={14} className="mr-1" />
+                            Открыть
+                          </a>
+                        </Button>
+                      ) : download.status === 'failed' ? (
+                        <Badge variant="destructive">
+                          <Icon name="XCircle" size={14} className="mr-1" />
+                          Ошибка
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-accent/20 text-accent border-accent/30">
+                          <Icon name="Loader2" size={14} className="mr-1 animate-spin" />
+                          Обработка
+                        </Badge>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
           </TabsContent>
