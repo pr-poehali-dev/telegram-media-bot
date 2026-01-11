@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,10 +8,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
+const ADMIN_PASSWORD = ')F?Je}dj1$2x&,~Res7<QvNMEZ&6JvkjT{a!{jVKu?s8qzm4,gDdhf;o7{euHcB:';
+
 const Index = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [telegramLink, setTelegramLink] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const savedAuth = sessionStorage.getItem('admin_authenticated');
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('admin_authenticated', 'true');
+      toast.success('Добро пожаловать в админ-панель!');
+    } else {
+      toast.error('Неверный пароль');
+      setPassword('');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('admin_authenticated');
+    setPassword('');
+    toast.success('Вы вышли из системы');
+  };
 
   const handleDownload = () => {
     if (!telegramLink.trim()) {
@@ -57,6 +87,59 @@ const Index = () => {
     { name: 'EU-Central', load: 71, status: 'warning', ping: '18ms' },
   ];
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8 space-y-6 animate-scale-in">
+          <div className="text-center space-y-2">
+            <div className="flex justify-center">
+              <div className="p-4 bg-primary/10 rounded-full">
+                <Icon name="Shield" className="text-primary" size={48} />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold">Админ-панель</h1>
+            <p className="text-sm text-muted-foreground">Введите пароль для доступа к управлению</p>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Пароль администратора</label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                  placeholder="Введите пароль"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Icon name={showPassword ? 'EyeOff' : 'Eye'} size={18} />
+                </button>
+              </div>
+            </div>
+            
+            <Button onClick={handleLogin} className="w-full" size="lg">
+              <Icon name="LogIn" className="mr-2" size={20} />
+              Войти
+            </Button>
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <Icon name="Info" size={14} className="mt-0.5 flex-shrink-0" />
+              <p>Доступ к панели управления ограничен. Для получения доступа обратитесь к системному администратору.</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -68,10 +151,16 @@ const Index = () => {
             </h1>
             <p className="text-muted-foreground mt-1">Enterprise медиа-загрузчик для Telegram</p>
           </div>
-          <Button size="lg" className="gap-2">
-            <Icon name="Plus" size={20} />
-            Создать бота
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button size="lg" className="gap-2">
+              <Icon name="Plus" size={20} />
+              Создать бота
+            </Button>
+            <Button size="lg" variant="outline" onClick={handleLogout} className="gap-2">
+              <Icon name="LogOut" size={20} />
+              Выйти
+            </Button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
